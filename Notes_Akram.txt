@@ -1,0 +1,6 @@
+1. There are two folders in Google Drive 'Invoice_Automation' -- linked to this Agent
+  a. Attachments form Gmail [this automation through Zapier -- check the credentials, should taken only invoice tag in the subject line, update it now]
+  b. Invoice Inbox -- files are arranged by month
+
+2. Vendor Master log must be updated by me
+3. Invoice Log file will be updated by Agent, Column O in this file to be commented by me

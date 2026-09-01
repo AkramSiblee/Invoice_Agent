@@ -7,23 +7,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-GOOGLE_APPLICATION_CREDENTIALS = os.environ.get(
-    "GOOGLE_APPLICATION_CREDENTIALS", "./credentials/service-account.json"
-)
 
-SHEET_ID = os.environ.get("INVOICE_SHEET_ID")
-INVOICE_LOG_TAB = "Invoice Log"
+# Controlled vocabulary the AP Agent's Matching_Rules.xlsx is keyed on. A
+# category outside this list can't be matched to a tolerance rule, so
+# extraction must pick from exactly these values or return null.
+AP_CATEGORIES = [
+    "Raw Materials",
+    "Packaging",
+    "MRO Supplies",
+    "Professional Services",
+    "Software & Subscriptions",
+    "Logistics & Freight",
+    "Facilities & Utilities",
+]
 
-# The vendor master lives in its own spreadsheet, not a second tab in
-# SHEET_ID — see references/sheet_schema.md.
-VENDOR_MASTER_SHEET_ID = os.environ.get("VENDOR_MASTER_SHEET_ID")
-
+# The watched 'Invoice_Automation' folder. Doubles as the parent for this
+# agent's own "Agent Data" subfolder (Invoice_Log/Vendor_Master sheets) —
+# see scripts/sheets_client.py — as well as the tree intake_drive.py walks
+# for new invoice files.
 DRIVE_WATCH_FOLDER_ID = os.environ.get("DRIVE_WATCH_FOLDER_ID")
 # No is:unread here on purpose — an invoice that arrived before this agent
 # existed, or that a person already opened, is still an invoice. Already-read
 # mail is included; scripts/intake_gmail.py bounds *how far back* it looks
 # using EMAIL_CHECK_START_DATE / the rolling checkpoint below instead.
-GMAIL_QUERY = os.environ.get("GMAIL_QUERY", "has:attachment label:Invoices")
+GMAIL_QUERY = os.environ.get("GMAIL_QUERY", "subject:(invoice OR invoices)")
 NOTIFY_EMAIL = os.environ.get("NOTIFY_EMAIL")
 
 # The very first time intake_gmail.py runs (before it has a saved checkpoint
