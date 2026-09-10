@@ -45,7 +45,7 @@ def process_new_invoices():
     if not jobs:
         return
 
-    # Extraction is the slow, token-spending step (one Claude call per file),
+    # Extraction is the slow, token-spending step (one OpenAI call per file),
     # and each call is fully independent — no shared conversation, no state
     # carried between invoices — so token cost per invoice stays flat
     # regardless of batch size. That independence is exactly what makes it
@@ -74,7 +74,7 @@ def process_new_invoices():
             try:
                 record = future.result()
                 if record is None:
-                    # Only possible for "text" jobs: Claude decided the email
+                    # Only possible for "text" jobs: OpenAI decided the email
                     # body doesn't actually contain a real invoice.
                     print(f"[skipped] {label} (not an invoice)")
                     continue

@@ -7,7 +7,7 @@ enforces, and why. Detail for any one section also lives in `SKILL.md` /
 ## 1. Pipeline order
 
 1. **Intake** — `intake_drive.py`, `intake_gmail.py`: find new files (and, for Gmail, new email-body text — see §4)
-2. **Extract** — `extract_invoice.py`: Claude reads the file or email body text, returns structured JSON (including a best-effort `category` from a fixed taxonomy), or `null` if body text turns out not to be a real invoice
+2. **Extract** — `extract_invoice.py`: OpenAI reads the file or email body text, returns structured JSON (including a best-effort `category` from a fixed taxonomy), or `null` if body text turns out not to be a real invoice
 3. **Validate** — `validate_invoice.py`: resolves `vendor_id`, 5 checks described below
 4. **Log** — `sheets_client.py::append_invoice_row`: one row per invoice in the `Invoice_Log` Google Sheet — this agent's OWN sheet, schema-matched to the Accounts Payable Agent's but never the same file (see `references/sheet_schema.md`)
 5. **Notify** — `notify.py`: emails a human if any check failed
@@ -60,12 +60,14 @@ Written incrementally (one item at a time, not batched) so a mid-run crash can't
 
 ## 6. Extraction (`extract_invoice.py`)
 
-- Model: `claude-sonnet-5` (swap the `MODEL` constant for cost/accuracy tradeoffs)
+- Model: `gpt-4o` via the OpenAI **Responses API** (swap the `MODEL` constant for cost/accuracy tradeoffs) — reads PDFs natively (`input_file` content block, base64 data URL) and images (`input_image`) without a separate OCR/rasterize step
+- **Structured Outputs** (`text.format = {"type": "json_schema", "strict": true, ...}`) enforce the schema server-side — `EXTRACTION_SCHEMA` / `TEXT_EXTRACTION_SCHEMA` in `extract_invoice.py` — instead of relying on prompt instructions + a fenced-code-block strip, so malformed JSON shouldn't happen in practice
 - Accepted file types: `application/pdf`, `image/jpeg`, `image/png`, `image/webp` — anything else raises `ValueError`
-- `max_tokens=4096` — headroom for long itemized receipts (raise further if a real invoice ever gets truncated mid-JSON)
-- Extraction schema (`EXTRACTION_PROMPT`): `vendor`, `invoice_number` (nullable — falls back to receipt/transaction number), `invoice_date` (`YYYY-MM-DD`), `line_items[]` (`description`, `quantity`, `unit_price`, `amount`), `subtotal`, `tax`, `total`, `po_number` (nullable), `po_line` (nullable, only if the document itself references one), `category` (nullable, must be exactly one of `AP_CATEGORIES` in `config.py` or `null`), `currency`
+- `max_output_tokens=4096` — headroom for long itemized receipts (raise further if a real invoice ever gets truncated mid-JSON)
+- Extraction schema (`EXTRACTION_PROMPT` + `EXTRACTION_SCHEMA`): `vendor`, `invoice_number` (nullable — falls back to receipt/transaction number), `invoice_date` (`YYYY-MM-DD`), `line_items[]` (`description`, `quantity`, `unit_price`, `amount`), `subtotal`, `tax`, `total`, `po_number` (nullable), `po_line` (nullable, only if the document itself references one), `category` (nullable, must be exactly one of `AP_CATEGORIES` in `config.py` or `null`), `currency`
 - Explicit instruction: **never invent a value not visibly on the document** — use `null`/`0` for genuinely absent fields, and never force `category` to the closest-sounding value when nothing genuinely fits
-- If line items aren't itemized (simple receipt), Claude returns one synthetic line item with the total amount
+- If line items aren't itemized (simple receipt), the model returns one synthetic line item with the total amount
+- The text-extraction path's schema (`TEXT_EXTRACTION_SCHEMA`) makes every field nullable, not just the ones nullable in the file-extraction schema — OpenAI's strict Structured Outputs mode requires every property to be present in the response even when `not_an_invoice` is `true` and there's nothing to fill in
 
 ## 7. Concurrency (`main.py::process_new_invoices`)
 
@@ -73,7 +75,7 @@ Written incrementally (one item at a time, not batched) so a mid-run crash can't
 - Safe because each extraction call is stateless — no shared conversation/context, so token cost per invoice is unaffected by concurrency; only wall-clock time drops
 - Steps 3–5 (validate/append/notify) stay **single-threaded**, one invoice at a time, in the order extractions finish — deliberate, because the duplicate check reads/appends to `existing_rows` in memory and interleaving those writes across threads would race
 - Same "load once, append locally" pattern applies to `master_vendors` in `apply_approved_vendors()`, to avoid a full-sheet re-read per pending row
-- **If volume grows into hundreds-per-run**: raising `MAX_CONCURRENT_EXTRACTIONS` further will hit Anthropic per-minute rate limits before it helps — switch to the Message Batches API instead (async, ~half per-token cost, sidesteps rate limits) rather than raising the pool size indefinitely
+- **If volume grows into hundreds-per-run**: raising `MAX_CONCURRENT_EXTRACTIONS` further will hit OpenAI per-minute rate limits before it helps — switch to the [Batch API](https://platform.openai.com/docs/guides/batch) instead (async, ~half per-token cost, sidesteps rate limits) rather than raising the pool size indefinitely
 
 ## 8. The one design rule that matters
 
@@ -89,12 +91,12 @@ Known gap: `add_vendor()` always mints a brand-new `vendor_id` — it doesn't ch
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | required for extraction |
+| `OPENAI_API_KEY` | — | required for extraction |
 | `DRIVE_WATCH_FOLDER_ID` | — | required for Drive intake; also the parent of this agent's own "Agent Data" sheets folder |
 | `GMAIL_QUERY` | `subject:(invoice OR invoices)` | intentionally no `is:unread`; matches subject line only, no attachment or label required — body text is extracted separately (§4) |
 | `EMAIL_CHECK_START_DATE` | today (if unset) | only used on the very first run, before a checkpoint exists |
 | `NOTIFY_EMAIL` | — | required for review alerts |
-| `MAX_CONCURRENT_EXTRACTIONS` | `4` | raise cautiously, watch Anthropic rate limits |
+| `MAX_CONCURRENT_EXTRACTIONS` | `4` | raise cautiously, watch OpenAI rate limits |
 
 `config.py` raises `RuntimeError` on a malformed `EMAIL_CHECK_START_DATE` (must be `YYYY-MM-DD`) and on any required value missing at the point it's actually used (`require()`).
 
@@ -112,4 +114,4 @@ Check the `issue` column first — it names exactly which check(s) failed:
 ## 12. What's real vs. what needs credentials
 
 - Fully working offline, no external deps: `validate_invoice.py`, `dedup.py` (covered by `tests/test_validate_invoice.py`)
-- Complete and correct against real APIs, but need your own credentials to run: `extract_invoice.py`, `sheets_client.py`, `intake_drive.py`, `intake_gmail.py`, `notify.py`
+- Complete and correct against real APIs (OpenAI + Google), but need your own credentials to run: `extract_invoice.py`, `sheets_client.py`, `intake_drive.py`, `intake_gmail.py`, `notify.py`

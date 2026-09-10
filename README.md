@@ -1,13 +1,13 @@
 # Invoice processing agent
 
-An agent that watches for incoming invoices (Gmail attachments or a Google Drive folder), extracts structured data using Claude, logs everything to the `Invoice_Log` Google Sheet, validates it against the `Vendor_Master` Google Sheet, and asks for human confirmation before touching reference data.
+An agent that watches for incoming invoices (Gmail attachments or a Google Drive folder), extracts structured data using OpenAI, logs everything to the `Invoice_Log` Google Sheet, validates it against the `Vendor_Master` Google Sheet, and asks for human confirmation before touching reference data.
 
 **This agent's file schema is matched to a separate Accounts Payable Agent's**, so rows can be copied across by a human — but it keeps its own `Vendor_Master`/`Invoice_Log` Google Sheets, in an "Agent Data" subfolder inside the watched `Invoice_Automation` Drive folder (`DRIVE_WATCH_FOLDER_ID` in `.env`), and never writes into the AP Agent's files directly. See `references/sheet_schema.md` for the full schema and why they're kept separate.
 
 ## Pipeline
 
 1. **Intake** — new files from a watched Gmail label or Drive folder; exact-duplicate bytes are skipped here regardless of which source or filename they arrive under (see `scripts/dedup.py`). Gmail attachments are also archived directly into the watched Drive folder's `Attachments from Gmail` subfolder — no external forwarding automation (e.g. Zapier) needed.
-2. **Extract** — Claude reads the PDF/image and returns structured JSON, including a best-effort category from a fixed taxonomy (null if nothing genuinely fits, e.g. a grocery receipt). Extraction calls for a batch run concurrently (bounded by `MAX_CONCURRENT_EXTRACTIONS` in `.env`) since each one is independent — see "Concurrency" in `SKILL.md`
+2. **Extract** — OpenAI reads the PDF/image and returns structured JSON, including a best-effort category from a fixed taxonomy (null if nothing genuinely fits, e.g. a grocery receipt). Extraction calls for a batch run concurrently (bounded by `MAX_CONCURRENT_EXTRACTIONS` in `.env`) since each one is independent — see "Concurrency" in `SKILL.md`
 3. **Log** — every invoice is appended to the `Invoice_Log` sheet
 4. **Validate** — vendor match (resolves a `vendor_id`), category validity, math check, PO check, duplicate check
 5. **Review loop** — failures get flagged and emailed; a human approves fixes (e.g. a new vendor) by editing the sheet, and the agent re-validates on the next run
@@ -34,7 +34,7 @@ Nothing to create — the `Vendor_Master` and `Invoice_Log` Google Sheets are cr
 
 ```bash
 cp .env.example .env
-# fill in ANTHROPIC_API_KEY, DRIVE_WATCH_FOLDER_ID, NOTIFY_EMAIL, etc.
+# fill in OPENAI_API_KEY, DRIVE_WATCH_FOLDER_ID, NOTIFY_EMAIL, etc.
 pip install -r requirements.txt
 ```
 
@@ -61,7 +61,7 @@ One caveat: Claude Code's exact convention for auto-loading a project-level skil
 ## What's real vs. what needs your credentials
 
 - `validate_invoice.py` and `dedup.py` are pure logic with no external dependencies — fully working right now; `validate_invoice.py` is covered by `tests/test_validate_invoice.py`.
-- `extract_invoice.py`, `sheets_client.py`, `intake_drive.py`, `intake_gmail.py`, and `notify.py` are complete, correct code against the real Anthropic and Google APIs, but need *your* API key, OAuth consent, and folder ID to actually run — those are yours to create, I can't generate them for you.
+- `extract_invoice.py`, `sheets_client.py`, `intake_drive.py`, `intake_gmail.py`, and `notify.py` are complete, correct code against the real OpenAI and Google APIs, but need *your* API key, OAuth consent, and folder ID to actually run — those are yours to create, I can't generate them for you.
 
 ## The one design rule to keep
 

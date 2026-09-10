@@ -88,7 +88,7 @@ rule in `SKILL.md`.
 
 **What `add_vendor()` actually writes**: only `vendor_id`, `vendor_name`,
 `aliases`, `status="Pending"`, `date_onboarded`, `onboarded_by`. Every other
-column is left blank — Claude has no way to know these from an invoice.
+column is left blank — the extraction model has no way to know these from an invoice.
 `status="Pending"` matters if a row is ever copied into the AP Agent's real
 file: its own `Active`-only gate keeps a `Pending` vendor from flowing into
 payment until a human completes the row.

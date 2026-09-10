@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # Controlled vocabulary the AP Agent's Matching_Rules.xlsx is keyed on. A
 # category outside this list can't be matched to a tolerance rule, so
@@ -52,7 +52,7 @@ else:
     EMAIL_CHECK_START_DATE = date.today().isoformat()
 
 # How many invoices main.py extracts concurrently (each is an independent,
-# stateless Claude call). Bound this to stay under your Anthropic rate limit
+# stateless OpenAI call). Bound this to stay under your OpenAI rate limit
 # rather than raising it without checking your tier's requests-per-minute.
 MAX_CONCURRENT_EXTRACTIONS = int(os.environ.get("MAX_CONCURRENT_EXTRACTIONS", "4"))
 
